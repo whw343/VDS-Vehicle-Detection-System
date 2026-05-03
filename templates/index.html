@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row">
+    <div class="col-md-3"></div>
+    <div class="col-md-6 text-center mb-4">
+        <h1>套牌车稽查系统</h1>
+        <p class="text-muted">上传卡口图片，AI自动识别车辆特征并与数据库比对</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card text-center p-3 bg-primary text-white">
+            <h5>[1] 上传图片</h5>
+            <small>支持jpg/png/bmp格式</small>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center p-3 bg-success text-white">
+            <h5>[2] AI分析</h5>
+            <small>检测+识别+比对</small>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center p-3 bg-info text-white">
+            <h5>[3] 结果展示</h5>
+            <small>套牌判定+特征详情</small>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">上传卡口图片</h5>
+                <form action="/upload" method="post" enctype="multipart/form-data">
+                    <div class="upload-zone" id="uploadZone">
+                        <p>📁 点击选择图片或拖拽到此处</p>
+                        <p class="text-muted small">支持格式：jpg、png、bmp</p>
+                        <input type="file" name="file" id="fileInput" accept=".jpg,.jpeg,.png,.bmp" style="display:none;" required>
+                    </div>
+                    <div class="mt-3">
+                        <button type="submit" class="btn btn-primary btn-lg w-100">🔍 开始分析</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">说明</h5>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item">📷 上传一张交通卡口摄像头拍摄的车辆图片</li>
+                    <li class="list-group-item">🤖 AI自动检测车辆、识别车牌/品牌/颜色</li>
+                    <li class="list-group-item">📊 与车辆登记数据库（6736条）比对</li>
+                    <li class="list-group-item">⚠️ 高亮标记套牌嫌疑车辆</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('uploadZone').addEventListener('click', function() {
+    document.getElementById('fileInput').click();
+});
+document.getElementById('fileInput').addEventListener('change', function(e) {
+    if (e.target.files.length > 0) {
+        document.getElementById('uploadZone').innerHTML = '<p>✅ 已选择: ' + e.target.files[0].name + '</p>';
+    }
+});
+</script>
+{% endblock %}

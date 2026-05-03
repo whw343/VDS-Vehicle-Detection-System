@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="mb-3">
+    <a href="/" class="btn btn-outline-secondary">← 返回首页</a>
+</div>
+
+<h3>📋 分析结果</h3>
+
+{% if result %}
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">原始图片</h5>
+                {% if result.image_url %}
+                <img src="{{ result.image_url }}" class="img-fluid rounded" alt="上传的车辆图片">
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <p>无图片</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        {% set status = result.get('status', 'unknown') %}
+        {% if status == 'normal' %}
+        <div class="card result-card result-normal mb-3">
+        {% elif status == 'suspicious' %}
+        <div class="card result-card result-suspicious mb-3">
+        {% else %}
+        <div class="card result-card result-unknown mb-3">
+        {% endif %}
+            <div class="card-body">
+                <h5 class="card-title">
+                    {% if status == 'normal' %}
+                    ✅ 正常车辆
+                    {% elif status == 'suspicious' %}
+                    ⚠️ 套牌嫌疑
+                    {% else %}
+                    ❓ 待分析
+                    {% endif %}
+                </h5>
+
+                <table class="table">
+                    <tr>
+                        <th width="120">车牌号</th>
+                        <td>{{ result.get('plate_number', '-') }}</td>
+                    </tr>
+                    <tr>
+                        <th>车辆品牌</th>
+                        <td>{{ result.get('brand', '-') }}</td>
+                    </tr>
+                    <tr>
+                        <th>车身颜色</th>
+                        <td>{{ result.get('color', '-') }}</td>
+                    </tr>
+                    <tr>
+                        <th>判定说明</th>
+                        <td>{{ result.get('judgment', '-') }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <a href="/" class="btn btn-primary">继续分析下一张</a>
+    </div>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+    <p>暂无分析结果</p>
+    <a href="/" class="btn btn-primary">上传图片开始分析</a>
+</div>
+{% endif %}
+{% endblock %}
