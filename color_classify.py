@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 import torch
 import torch.nn as nn
-from torchvision import transforms
+from torchvision import transforms, models
 from PIL import Image
 
 
@@ -43,33 +43,21 @@ COLOR_CHINESE = {
 
 
 class ColorClassifier(nn.Module):
-    """车辆颜色分类CNN模型"""
+    """车辆颜色分类模型（ResNet18迁移学习）"""
 
     def __init__(self, num_classes=8):
         super(ColorClassifier, self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+        self.backbone = models.resnet18(pretrained=False)
+        num_features = self.backbone.fc.in_features
+        self.backbone.fc = nn.Sequential(
+            nn.Linear(num_features, 256),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-        )
-        self.classifier = nn.Sequential(
-            nn.Linear(128 * 28 * 28, 256),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
+            nn.Dropout(0.3),
             nn.Linear(256, num_classes),
         )
 
     def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), -1)
-        x = self.classifier(x)
-        return x
+        return self.backbone(x)
 
 
 class VehicleColorClassifier:
