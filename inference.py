@@ -15,6 +15,7 @@ from detect import VehicleDetector
 from plate_recognize import PlateRecognizer
 from color_classify import VehicleColorClassifier
 from brand_classify import VehicleBrandClassifier
+from type_classify import VehicleTypeClassifier
 from compare import compare_features
 
 
@@ -26,6 +27,7 @@ class VehicleAnalyzer:
         self.plate_recognizer = None
         self.color_classifier = None
         self.brand_classifier = None
+        self.type_classifier = None
         self.vehicle_db = None
 
     def load_all_models(self, vehicle_db=None):
@@ -62,7 +64,12 @@ class VehicleAnalyzer:
         if not self.brand_classifier.load_model():
             print("[推理] 品牌模型加载失败（可选）")
 
-        # 5. 数据库
+        # 5. 类型识别
+        self.type_classifier = VehicleTypeClassifier(model_path='weights/type_model.pth')
+        if not self.type_classifier.load_model():
+            print("[推理] 类型模型加载失败（可选）")
+
+        # 6. 数据库
         self.vehicle_db = vehicle_db
 
         return success

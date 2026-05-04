@@ -22,6 +22,7 @@ from detect import VehicleDetector
 from plate_recognize import PlateRecognizer
 from color_classify import VehicleColorClassifier
 from brand_classify import VehicleBrandClassifier
+from type_classify import VehicleTypeClassifier
 
 # 配置日志
 logging.basicConfig(
@@ -52,6 +53,7 @@ _detector = None
 _plate_recognizer = None
 _color_classifier = None
 _brand_classifier = None
+_type_classifier = None
 
 def get_detector():
     """获取车辆检测器（懒加载）"""
@@ -84,6 +86,14 @@ def get_brand_classifier():
         _brand_classifier = VehicleBrandClassifier(model_path='weights/brand_model.pth')
         _brand_classifier.load_model()
     return _brand_classifier
+
+def get_type_classifier():
+    """获取类型分类器（懒加载）"""
+    global _type_classifier
+    if _type_classifier is None:
+        _type_classifier = VehicleTypeClassifier(model_path='weights/type_model.pth')
+        _type_classifier.load_model()
+    return _type_classifier
 
 
 def allowed_file(filename):
@@ -134,14 +144,24 @@ def _run_ai_pipeline(filepath):
         except Exception as e:
             logger.warning(f"品牌识别失败: {e}")
 
-    # 5. 数据库比对
+    # 5. 车辆类型识别
+    vehicle_type = best.get('class_name_cn', '未知')
+    type_classifier = get_type_classifier()
+    if type_classifier.model:
+        try:
+            type_result = type_classifier.classify(crop)
+            vehicle_type = type_result.get('type_cn', vehicle_type)
+        except Exception as e:
+            logger.warning(f"类型识别失败: {e}")
+
+    # 6. 数据库比对
     comparison = compare_features(plate_number, brand, color_cn, vehicle_db)
 
     result = {
         'plate_number': plate_number or '未识别',
         'brand': brand,
         'color': color_cn,
-        'type': best.get('class_name_cn', '未知'),
+        'type': vehicle_type,
         'confidence': f"{best['confidence']:.1%}" if best.get('confidence') else '',
         'vehicle_count': len(detections),
         'comparison': comparison,
@@ -287,6 +307,7 @@ def health_check():
             'plate_ocr': _plate_recognizer is not None,
             'color_classifier': _color_classifier is not None and _color_classifier.model is not None,
             'brand_classifier': _brand_classifier is not None and _brand_classifier.model is not None,
+            'type_classifier': _type_classifier is not None and _type_classifier.model is not None,
         }
     })
 
