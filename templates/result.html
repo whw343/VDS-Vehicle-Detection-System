@@ -4,49 +4,85 @@
     <a href="/" class="btn btn-outline-secondary">← 返回首页</a>
 </div>
 
-<h3>📋 分析结果</h3>
-
 {% if result %}
-<div class="row">
-    <div class="col-md-6">
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">原始图片</h5>
-                {% if result.image_url %}
-                <img src="{{ result.image_url }}" class="img-fluid rounded" alt="上传的车辆图片">
-                {% else %}
-                <div class="text-center text-muted py-5">
-                    <p>无图片</p>
-                </div>
-                {% endif %}
-            </div>
-        </div>
+<div class="fade-in">
+    <!-- 判定横幅 -->
+    {% set emoji = result.get('judgment_emoji', '❓') %}
+    {% set status = 'normal' if '✅' in (result.get('judgment','') or '') else ('suspicious' if '⚠' in (result.get('judgment','') or '') else 'unknown') %}
+    <div class="result-status {{ 'status-normal' if status == 'normal' else ('status-suspicious' if status == 'suspicious' else 'status-unknown') }} mb-3 text-center">
+        {{ emoji }} {{ result.get('judgment', '分析完成') }}
     </div>
 
-    <div class="col-md-6">
-        {% set status = result.get('status', 'unknown') %}
-        {% if status == 'normal' %}
-        <div class="card result-card result-normal mb-3">
-        {% elif status == 'suspicious' %}
-        <div class="card result-card result-suspicious mb-3">
-        {% else %}
-        <div class="card result-card result-unknown mb-3">
-        {% endif %}
-            <div class="card-body">
-                <h5 class="card-title">
-                    {% if status == 'normal' %}
-                    ✅ 正常车辆
-                    {% elif status == 'suspicious' %}
-                    ⚠️ 套牌嫌疑
+    <div class="row">
+        <!-- 左侧：图片 -->
+        <div class="col-md-5">
+            <div class="card mb-3">
+                <div class="card-header"><strong>📷 上传图片</strong></div>
+                <div class="card-body text-center p-2">
+                    {% if result.image_url %}
+                    <img src="{{ result.image_url }}" class="img-fluid rounded" alt="车辆图片" style="max-height:350px;">
                     {% else %}
-                    ❓ 待分析
+                    <p class="text-muted py-4">无图片</p>
                     {% endif %}
-                </h5>
+                </div>
+            </div>
+            {% if result.crop_url %}
+            <div class="card mb-3">
+                <div class="card-header"><strong>✂️ 检测裁剪</strong></div>
+                <div class="card-body text-center p-2">
+                    <img src="{{ result.crop_url }}" class="img-fluid rounded" alt="裁剪车辆" style="max-height:200px;">
+                </div>
+            </div>
+            {% endif %}
+        </div>
 
-                <table class="table">
+        <!-- 右侧：分析结果 -->
+        <div class="col-md-7">
+            <!-- 评分条 -->
+            {% set score = result.get('score', 0) if result.get('score') else 0 %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong>📊 综合评分</strong>
+                        <span class="fw-bold fs-5">{{ score }}</span>
+                    </div>
+                    <div class="score-bar">
+                        <div class="score-fill {{ 'score-high' if score >= 80 else ('score-mid' if score >= 40 else 'score-low') }}"
+                             style="width: {{ score }}%;"></div>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1 small text-muted">
+                        <span>套牌嫌疑</span><span>待确认</span><span>正常</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 特征标签 -->
+            <div class="card mb-3">
+                <div class="card-header"><strong>🏷️ 识别特征</strong></div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <span class="feature-badge badge-plate">🚘 车牌: {{ result.get('plate_number', '-') }}</span>
+                        <span class="feature-badge badge-brand">🏭 品牌: {{ result.get('brand', '-') }}</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="feature-badge badge-color">🎨 颜色: {{ result.get('color', '-') }}</span>
+                        <span class="feature-badge badge-type">🚛 类型: {{ result.get('type', '-') }}</span>
+                    </div>
+                    {% if result.get('confidence') %}
+                    <div class="mt-2 small text-muted">
+                        检测置信度: <strong>{{ result.confidence }}</strong>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 比对详情表 -->
+            <div class="card mb-3">
+                <div class="card-header"><strong>📋 比对详情</strong></div>
+                <table class="table table-feature mb-0">
                     <tr>
-                        <th width="120">车牌号</th>
-                        <td>{{ result.get('plate_number', '-') }}</td>
+                        <th>车牌号</th>
+                        <td><strong>{{ result.get('plate_number', '-') }}</strong></td>
                     </tr>
                     <tr>
                         <th>车辆品牌</th>
@@ -57,20 +93,33 @@
                         <td>{{ result.get('color', '-') }}</td>
                     </tr>
                     <tr>
-                        <th>判定说明</th>
-                        <td>{{ result.get('judgment', '-') }}</td>
+                        <th>车辆类型</th>
+                        <td>{{ result.get('type', '-') }}</td>
+                    </tr>
+                    <tr>
+                        <th>检测车辆数</th>
+                        <td>{{ result.get('vehicle_count', '-') }} 辆</td>
+                    </tr>
+                    <tr>
+                        <th>数据库比对</th>
+                        <td>{{ result.get('message', '-') }}</td>
                     </tr>
                 </table>
             </div>
-        </div>
 
-        <a href="/" class="btn btn-primary">继续分析下一张</a>
+            <div class="d-grid">
+                <a href="/" class="btn btn-primary btn-lg">继续分析下一张</a>
+            </div>
+        </div>
     </div>
 </div>
+
 {% else %}
-<div class="text-center text-muted py-5">
-    <p>暂无分析结果</p>
-    <a href="/" class="btn btn-primary">上传图片开始分析</a>
+<div class="text-center py-5">
+    <div class="no-vehicle mb-3">📭</div>
+    <h4 class="text-muted">暂无分析结果</h4>
+    <p class="text-muted">请上传图片开始分析</p>
+    <a href="/" class="btn btn-primary btn-lg mt-3">📤 上传图片</a>
 </div>
 {% endif %}
 {% endblock %}
