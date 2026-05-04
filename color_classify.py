@@ -85,8 +85,12 @@ class VehicleColorClassifier:
             return False
 
         try:
+            state_dict = torch.load(self.model_path, map_location=self.device, weights_only=True)
+            # 兼容有无backbone.前缀
+            if not any(k.startswith('backbone.') for k in state_dict.keys()):
+                state_dict = {'backbone.' + k: v for k, v in state_dict.items()}
             self.model = ColorClassifier(num_classes=self.num_classes)
-            self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))
+            self.model.load_state_dict(state_dict)
             self.model.to(self.device)
             self.model.eval()
             print(f"[颜色识别] 模型加载成功: {self.model_path}")
