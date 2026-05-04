@@ -41,7 +41,7 @@ class VehicleAnalyzer:
         success = True
 
         # 1. 车辆检测器
-        self.detector = VehicleDetector(model_path='weights/yolov5m.pt')
+        self.detector = VehicleDetector(model_path='weights/yolov5su.pt')
         if not self.detector.load_model():
             print("[推理] YOLOv5模型加载失败")
             success = False
