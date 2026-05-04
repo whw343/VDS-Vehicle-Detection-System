@@ -17,21 +17,16 @@ from torchvision import transforms, models
 from PIL import Image
 
 
-# 50种车辆品牌标签（与阶段三-任务4数据集一致）
-BRAND_LABELS = [
-    '一汽', '一汽卡车', '一汽面包车', '中华', '五菱',
-    '丰田', '本田', '别克', '别克商务车', '北汽',
-    '华泰', '双龙', '吉利', '大众出租车', '大众家用车',
-    '大宇', '奔驰', '宝马', '宝骏', '长安',
-    '长安面包车', '长城', '雪佛兰', '雪铁龙', '日产',
-    '日产越野车', '昌河', '标志', '比亚迪', '江淮',
-    '江淮卡车', '江淮面包车', '海马', '现代', '现代越野车',
-    '现代面包车', '福特', '福特面包车', '福田大卡', '福田小卡',
-    '福田', '绅宝', '荣威', '菲亚特', '起亚',
-    '金杯卡车', '金杯面包车', '铃木', '黄牌卡车', '黄牌大巴',
-    '其他', '公交车', '东风', '东风面包车', '东风卡车',
-    '哈飞', '江铃', '马自达', '长安面包车', '奥迪',
-]
+# 品牌标签（从训练数据XML标注中提取，或从weights/brand_labels.txt加载）
+def _load_brand_labels(label_file='weights/brand_labels.txt'):
+    """从品牌标签文件加载"""
+    labels = []
+    if os.path.exists(label_file):
+        with open(label_file, 'r', encoding='utf-8') as f:
+            labels = [line.strip() for line in f if line.strip()]
+    return labels
+
+BRAND_LABELS = _load_brand_labels()
 
 
 class BrandClassifier(nn.Module):
@@ -56,7 +51,7 @@ class BrandClassifier(nn.Module):
 class VehicleBrandClassifier:
     """车辆品牌识别器"""
 
-    def __init__(self, model_path='weights/brand_model.pth', num_classes=50):
+    def __init__(self, model_path='weights/brand_model.pth', num_classes=None):
         self.model_path = model_path
         self.num_classes = num_classes
         self.model = None
@@ -78,8 +73,25 @@ class VehicleBrandClassifier:
             return False
 
         try:
+            state_dict = torch.load(self.model_path, map_location=self.device, weights_only=True)
+            
+            # 从模型权重推断类别数
+            fc_key = None
+            for k in state_dict.keys():
+                if k.endswith('fc.3.weight') or k.endswith('fc.3.bias'):
+                    fc_key = k
+                    break
+            if fc_key:
+                self.num_classes = state_dict[fc_key].shape[0]
+            elif self.num_classes is None:
+                self.num_classes = len(BRAND_LABELS)
+
+            # 兼容有无backbone.前缀
+            if not any(k.startswith('backbone.') for k in state_dict.keys()):
+                state_dict = {'backbone.' + k: v for k, v in state_dict.items()}
+            
             self.model = BrandClassifier(num_classes=self.num_classes)
-            self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))
+            self.model.load_state_dict(state_dict)
             self.model.to(self.device)
             self.model.eval()
             print(f"[品牌识别] 模型加载成功: {self.model_path}")
