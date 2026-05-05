@@ -123,8 +123,8 @@ class VehicleDetector:
                 conf = float(box.conf[0])
                 cls_id = int(box.cls[0])
 
-                # 只保留车辆类别
-                if cls_id not in VEHICLE_CLASSES:
+                # 只保留车辆类别（微调模型≤1类全部保留，预训练模型用COCO的2/3/5/7）
+                if cls_id not in VEHICLE_CLASSES and len(self.class_names) > 1:
                     continue
 
                 # 边界裁剪保护
