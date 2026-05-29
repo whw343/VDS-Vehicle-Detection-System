@@ -16,7 +16,7 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 
 # 导入自定义模块
-from db_loader import load_vehicle_database, query_vehicle, get_database_stats
+from db_loader import load_vehicle_database, query_vehicle, get_database_stats, fuzzy_search_plate
 from compare import compare_features, summarize_result, get_judgment_emoji
 from detect import VehicleDetector
 from plate_recognize import PlateRecognizer
@@ -102,6 +102,17 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def _correct_plate_with_database(plate_number):
+    """Use the registration database to correct one-character OCR mistakes."""
+    if not plate_number:
+        return plate_number
+
+    matches = fuzzy_search_plate(plate_number, vehicle_db)
+    if matches and matches[0].get('similarity', 0) >= 0.8:
+        return matches[0].get('plateNo', plate_number)
+    return plate_number
+
+
 def _run_ai_pipeline(filepath):
     """
     执行AI分析管线
@@ -123,6 +134,12 @@ def _run_ai_pipeline(filepath):
     # 2. 车牌OCR识别
     plate_recognizer = get_plate_recognizer()
     plate_number = plate_recognizer.recognize(crop)
+    if not plate_number or not plate_recognizer._is_valid_plate(plate_number):
+        full_image_plate = plate_recognizer.recognize(filepath)
+        if full_image_plate and plate_recognizer._is_valid_plate(full_image_plate):
+            plate_number = full_image_plate
+    if plate_number:
+        plate_number = _correct_plate_with_database(plate_number)
 
     # 3. 车辆颜色识别
     color_cn = '未知'

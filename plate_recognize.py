@@ -16,6 +16,7 @@ import re
 
 # 中国车牌省份简称
 CHINESE_PROVINCES = set('京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤川青藏琼宁')
+PLATE_ALLOWLIST = ''.join(sorted(CHINESE_PROVINCES)) + 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
 
 class PlateRecognizer:
@@ -422,6 +423,217 @@ class PlateRecognizer:
             }
 
         return plate_number
+
+
+# ---------------------------------------------------------------------------
+# Enhanced OCR pipeline
+# ---------------------------------------------------------------------------
+
+def _vds_detect_plate_regions(self, image, max_candidates=4):
+    """Generate ranked plate candidates for checkpoint images."""
+    if image is None or image.size == 0:
+        return []
+
+    h, w = image.shape[:2]
+    candidates = []
+
+    for color_name in ("blue", "green", "yellow"):
+        mask = self._color_filter(image, color_name)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        min_area = max(w * h * 0.0015, 60)
+
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area < min_area:
+                continue
+
+            x, y, rw, rh = cv2.boundingRect(cnt)
+            if rw < 30 or rh < 8:
+                continue
+
+            aspect = rw / rh if rh else 0
+            if not (1.6 <= aspect <= 8.5):
+                continue
+
+            score = 30.0
+            score -= abs(aspect - 4.0) * 2.0
+            score += 10.0 if y > h * 0.45 else 0.0
+            score += min(area / max(w * h, 1) * 800.0, 20.0)
+            score -= 18.0 if area > w * h * 0.18 else 0.0
+
+            for pad_ratio in (0.10, 0.22):
+                pad_x = int(rw * pad_ratio)
+                pad_y = int(rh * (pad_ratio + 0.08))
+                x1 = max(0, x - pad_x)
+                y1 = max(0, y - pad_y)
+                x2 = min(w, x + rw + pad_x)
+                y2 = min(h, y + rh + pad_y)
+                crop = image[y1:y2, x1:x2].copy()
+                candidates.append((f"{color_name}:{x},{y},{rw},{rh}", crop, score))
+
+    white_crop = self._detect_white_plate(image)
+    if white_crop is not None:
+        candidates.append(("white", white_crop, 15.0))
+
+    if h >= 500 and w >= 700:
+        candidates.append(("overlay", image[:max(90, h // 10), :max(430, w // 3)].copy(), 75.0))
+
+    if h >= 120:
+        candidates.append(("lower", image[int(h * 0.58):h, :].copy(), 5.0))
+
+    ranked = []
+    seen = set()
+    for name, crop, score in candidates:
+        if crop is None or crop.size == 0:
+            continue
+        ch, cw = crop.shape[:2]
+        if ch < 10 or cw < 25:
+            continue
+        key = (name, ch, cw)
+        if key in seen:
+            continue
+        seen.add(key)
+        ranked.append((name, crop, score))
+
+    ranked.sort(key=lambda item: item[2], reverse=True)
+    return [(name, crop) for name, crop, _ in ranked[:max_candidates]]
+
+
+def _vds_preprocess_for_ocr(self, image):
+    """Create multi-scale OCR inputs for small, reflective plates."""
+    results = []
+    if image is None or image.size == 0:
+        return results
+
+    if len(image.shape) == 2:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
+    h, w = image.shape[:2]
+    if h < 45:
+        scale = 80 / max(h, 1)
+        image = cv2.resize(image, (int(w * scale), 80), interpolation=cv2.INTER_CUBIC)
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    sharp = cv2.addWeighted(enhanced, 1.7, cv2.GaussianBlur(enhanced, (0, 0), 1.1), -0.7, 0)
+    _, otsu = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    adaptive = cv2.adaptiveThreshold(
+        enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 9
+    )
+
+    base_versions = [
+        ("original", image),
+        ("gray", gray),
+        ("clahe", enhanced),
+        ("sharp", sharp),
+        ("otsu", otsu),
+    ]
+
+    for name, img in base_versions:
+        results.append((name, img))
+        ih, iw = img.shape[:2]
+        if ih < 160:
+            for scale in (2, 3):
+                resized = cv2.resize(img, (iw * scale, ih * scale), interpolation=cv2.INTER_CUBIC)
+                results.append((f"{name}_x{scale}", resized))
+
+    return results
+
+
+def _vds_plate_candidates_from_text(self, text):
+    cleaned = self._clean_plate_text(text)
+    if not cleaned:
+        return []
+
+    candidates = {cleaned}
+    province_chars = ''.join(CHINESE_PROVINCES)
+    candidates.update(re.findall(f'([{province_chars}][A-Z0-9][A-Z0-9]{{4,6}})', cleaned))
+    candidates.update(re.findall(r'([A-Z0-9][A-Z0-9]{5,6})', cleaned))
+
+    expanded = set()
+    second_char_map = {
+        "0": ("O", "D", "U"),
+        "1": ("I", "T"),
+        "2": ("Z",),
+        "5": ("S",),
+        "8": ("B",),
+    }
+    for cand in candidates:
+        expanded.add(cand)
+        if cand and cand[0] in CHINESE_PROVINCES and len(cand) >= 2:
+            for repl in second_char_map.get(cand[1], ()):
+                expanded.add(cand[0] + repl + cand[2:])
+
+    return [c for c in expanded if 5 <= len(c) <= 8]
+
+
+def _vds_extract_plate_text(self, image):
+    if self.reader is None:
+        print("[车牌识别] 模型未加载")
+        return ""
+
+    if isinstance(image, str):
+        if not os.path.exists(image):
+            return ""
+        image = cv2.imread(image)
+
+    if image is None or image.size == 0:
+        return ""
+
+    regions = self.detect_plate_regions(image)
+    if not regions:
+        regions = [("full", image)]
+
+    all_texts = []
+    for region_name, region in regions:
+        if region_name == "overlay":
+            rh, rw = region.shape[:2]
+            preprocess_items = [
+                ("original", region),
+                ("original_x2", cv2.resize(region, (rw * 2, rh * 2), interpolation=cv2.INTER_CUBIC)),
+                ("original_x3", cv2.resize(region, (rw * 3, rh * 3), interpolation=cv2.INTER_CUBIC)),
+            ]
+        else:
+            preprocess_items = self.preprocess_for_ocr(region)
+
+        for prep_name, proc_img in preprocess_items:
+            try:
+                results = self.reader.readtext(
+                    proc_img,
+                    allowlist=PLATE_ALLOWLIST,
+                    paragraph=False,
+                    detail=1,
+                )
+            except Exception:
+                continue
+
+            for bbox, text, confidence in results:
+                for candidate in self._plate_candidates_from_text(text):
+                    if confidence > 0.01:
+                        if region_name == "overlay" and confidence >= 0.75 and self._is_valid_plate(candidate):
+                            print(f"[车牌识别] 识别结果: {candidate} ({confidence:.2%}, {region_name}:{prep_name})")
+                            return candidate
+                        all_texts.append((candidate, confidence, f"{region_name}:{prep_name}"))
+
+    if not all_texts:
+        return ""
+
+    all_texts.sort(key=lambda x: (self._plate_score(x[0]), x[1]), reverse=True)
+    best_text, best_conf, source = all_texts[0]
+
+    if best_conf < 0.03 and not self._is_valid_plate(best_text):
+        print(f"[车牌识别] 低置信度结果: {best_text} ({best_conf:.2%})")
+        return ""
+
+    print(f"[车牌识别] 识别结果: {best_text} ({best_conf:.2%}, {source})")
+    return best_text
+
+
+PlateRecognizer.detect_plate_regions = _vds_detect_plate_regions
+PlateRecognizer.preprocess_for_ocr = _vds_preprocess_for_ocr
+PlateRecognizer._plate_candidates_from_text = _vds_plate_candidates_from_text
+PlateRecognizer.extract_plate_text = _vds_extract_plate_text
 
 
 # ── 便捷函数 ───────────────────────────────────
