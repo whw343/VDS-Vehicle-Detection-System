@@ -21,7 +21,7 @@ VEHICLE_CLASSES = [2, 3, 5, 7]
 class VehicleDetector:
     """YOLOv5 车辆检测器"""
 
-    def __init__(self, model_path='weights/yolov5su.pt', confidence=0.45, device=None):
+    def __init__(self, model_path='weights/yolov5su.pt', confidence=0.25, device=None, fallback_full_image=True):
         """
         初始化检测器
 
@@ -33,6 +33,7 @@ class VehicleDetector:
         self.model_path = model_path
         self.confidence = confidence
         self.device = device or ('cuda' if self._cuda_available() else 'cpu')
+        self.fallback_full_image = fallback_full_image
         self.model = None
         self.class_names = {}
 
@@ -169,7 +170,22 @@ class VehicleDetector:
                 det['crop_path'] = crop_path
 
         print(f"[检测器] 检测到 {len(detections)} 辆车")
+        if not detections and self.fallback_full_image:
+            detections.append(self._full_image_detection(img, w, h))
+            print("[检测器] YOLO未命中，使用整图作为车辆区域兜底")
         return detections
+
+    def _full_image_detection(self, img, width, height):
+        """Treat a vehicle-crop upload as one vehicle when YOLO misses it."""
+        return {
+            'bbox': [0, 0, int(width), int(height)],
+            'confidence': 0.0,
+            'class_id': -1,
+            'class_name': 'vehicle',
+            'class_name_cn': '车辆',
+            'crop': img.copy(),
+            'fallback': True
+        }
 
     def detect_and_annotate(self, image_path, output_path=None):
         """
@@ -220,7 +236,7 @@ class VehicleDetector:
         return detections, output_path
 
 
-def detect_vehicles(image_path, model_path='weights/yolov5su.pt', confidence=0.45):
+def detect_vehicles(image_path, model_path='weights/yolov5su.pt', confidence=0.25):
     """
     便捷函数：检测图片中的车辆
 
